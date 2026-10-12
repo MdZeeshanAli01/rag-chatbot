@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  rag-chatbot:
+    build: .
+    container_name: rag_chatbot_app
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

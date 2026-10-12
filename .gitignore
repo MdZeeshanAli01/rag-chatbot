@@ -1,0 +1,21 @@
+# Environment and Secrets
+.env
+*.env
+backend/.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+backend/__pycache__/
+*/__pycache__/*
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Scratch & OS files
+backend/New Text Document.txt
+.DS_Store
+Thumbs.db
