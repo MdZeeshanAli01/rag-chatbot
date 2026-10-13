@@ -18,12 +18,34 @@ if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY is not set. Please set it in backend/.env or as an environment variable.")
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
-vector_store = None
-llm = None
+VECTOR_DB_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
+os.makedirs(VECTOR_DB_DIR, exist_ok=True)
+
+_embeddings = None
+
+
+def get_embeddings():
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+    return _embeddings
+
+
+def get_llm():
+    global llm
+    if llm is None:
+        model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+        llm = ChatGroq(
+            model=model_name,
+            temperature=0.3
+        )
+    return llm
 
 
 def process_pdf(pdf_path):
-    global vector_store, llm
+    global vector_store
 
     loader = PyPDFLoader(pdf_path)
     documents = loader.load()
@@ -34,26 +56,33 @@ def process_pdf(pdf_path):
     )
 
     chunks = splitter.split_documents(documents)
-
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+    embeddings = get_embeddings()
 
     vector_store = FAISS.from_documents(chunks, embeddings)
-
-    # Use currently supported production model on Groq
-    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-    llm = ChatGroq(
-        model=model_name,
-        temperature=0.3
-    )
+    vector_store.save_local(VECTOR_DB_DIR)
+    print("Vector database saved to:", VECTOR_DB_DIR)
 
 
 def ask_question(question):
     global vector_store, llm
 
     if vector_store is None:
+        index_file = os.path.join(VECTOR_DB_DIR, "index.faiss")
+        if os.path.exists(index_file):
+            try:
+                print("Loading persisted vector database from disk...")
+                vector_store = FAISS.load_local(
+                    VECTOR_DB_DIR,
+                    get_embeddings(),
+                    allow_dangerous_deserialization=True
+                )
+            except Exception as e:
+                print("Error loading persisted FAISS index:", e)
+
+    if vector_store is None:
         return "Please upload a PDF first."
+
+    llm = get_llm()
 
     docs = vector_store.similarity_search(question, k=3)
 
