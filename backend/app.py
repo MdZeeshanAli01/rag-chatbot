@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import os
 import shutil
+import asyncio
 
 from rag import process_pdf, ask_question
 
@@ -45,8 +46,8 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         print("PDF Saved:", file_path)
 
-        # Process PDF
-        process_pdf(file_path)
+        # Process PDF in threadpool to prevent blocking the asyncio event loop
+        await asyncio.to_thread(process_pdf, file_path)
 
         print("PDF Processed Successfully!")
 
@@ -60,9 +61,9 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 
 @app.get("/ask")
-def ask(query: str):
+async def ask(query: str):
     try:
-        answer = ask_question(query)
+        answer = await asyncio.to_thread(ask_question, query)
         return {
             "question": query,
             "answer": answer

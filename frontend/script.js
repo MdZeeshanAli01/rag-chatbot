@@ -3,14 +3,22 @@ const API_URL = (window.location.port === "8000") ? "" : "http://127.0.0.1:8000"
 // Upload PDF
 async function uploadPDF() {
     const fileInput = document.getElementById("pdfFile");
+    const uploadBtn = document.querySelector(".upload-box button");
 
     if (fileInput.files.length === 0) {
-        alert("Please select a PDF file.");
+        alert("Please select a PDF file first.");
         return;
     }
 
+    const file = fileInput.files[0];
     const formData = new FormData();
-    formData.append("file", fileInput.files[0]);
+    formData.append("file", file);
+
+    const originalBtnText = uploadBtn ? uploadBtn.innerText : "Upload PDF";
+    if (uploadBtn) {
+        uploadBtn.disabled = true;
+        uploadBtn.innerText = "⏳ Processing PDF... (please wait)";
+    }
 
     try {
         const response = await fetch(`${API_URL}/upload`, {
@@ -28,8 +36,13 @@ async function uploadPDF() {
         alert(data.message || "PDF uploaded and processed successfully!");
 
     } catch (error) {
-        alert("Error connecting to server. Make sure the backend is running.");
-        console.error(error);
+        alert("Upload error: " + (error.message || "Connection failed. Make sure the backend is running."));
+        console.error("Upload error:", error);
+    } finally {
+        if (uploadBtn) {
+            uploadBtn.disabled = false;
+            uploadBtn.innerText = originalBtnText;
+        }
     }
 }
 
