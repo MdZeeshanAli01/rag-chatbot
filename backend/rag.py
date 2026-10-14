@@ -22,6 +22,8 @@ VECTOR_DB_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
 os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 
 _embeddings = None
+vector_store = None
+llm = None
 
 
 def get_embeddings():
