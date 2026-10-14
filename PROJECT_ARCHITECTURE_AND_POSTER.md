@@ -25,6 +25,7 @@
 │   │                               Inbound: Port 22 (SSH), Port 8000 (Custom TCP / HTTP)                            │   │
 │   └───────────────────────────────────────────────────────┬────────────────────────────────────────────────────────┘   │
 │                                                           │                                                            │
+                                                           │                                                            │
 │   ┌───────────────────────────────────────────────────────▼────────────────────────────────────────────────────────┐   │
 │   │                                Amazon EC2 INSTANCE (Ubuntu 24.04 LTS)                                          │   │
 │   │   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │   │
@@ -32,31 +33,38 @@
 │   │   │                                                                                                        │   │   │
 │   │   │   ┌────────────────────────────────────────┐          ┌────────────────────────────────────────────┐   │   │   │
 │   │   │   │            FRONTEND SERVICE            │          │         FASTAPI BACKEND SERVICE            │   │   │   │
-│   │   │   │   • index.html (Responsive Chat UI)    │◄────────►│   • POST /upload (Document Ingestion)      │   │   │   │
+│   │   │   │   • index.html (Responsive Chat UI)    │◄────────►│   • POST /upload (EBS & S3 Ingestion)      │   │   │   │
 │   │   │   │   • script.js (Async Fetch + Feedback) │          │   • GET  /ask   (Similarity Query & LLM)   │   │   │   │
-│   │   │   │   • style.css (Dark/Light Minimalist)  │          │   • GET  /health (Readiness / Liveness)    │   │   │   │
-│   │   │   └────────────────────────────────────────┘          └─────────────────────┬──────────────────────┘   │   │   │
-│   │   │                                                                             │                          │   │   │
-│   │   │                                                                             ▼                          │   │   │
-│   │   │                                                       ┌────────────────────────────────────────────┐   │   │   │
-│   │   │                                                       │         LANGCHAIN RAG ORCHESTRATOR         │   │   │   │
-│   │   │                                                       │   • PyPDFLoader (Text Extraction)          │   │   │   │
-│   │   │                                                       │   • RecursiveCharacterTextSplitter         │   │   │   │
-│   │   │                                                       │   • HuggingFace Sentence-Transformers      │   │   │   │
-│   │   │                                                       │   • FAISS (Vector Index Engine)            │   │   │   │
-│   │   │                                                       └─────────────────────┬──────────────────────┘   │   │   │
-│   │   └─────────────────────────────────────────────────────────────────────────────┼──────────────────────────┘   │   │
-│   │                                                                                 │                              │   │
-│   │   ┌───────────────────────────────────────┐                                     │                              │   │
-│   │   │     AMAZON EBS VOLUME (25 GiB)        │                                     │                              │   │
-│   │   │   • Persistent Uploads: /uploads/     │◄────────────────────────────────────┤                              │   │
-│   │   │   • FAISS Vector Store: /vector_db/   │                                     │                              │   │
-│   │   │   • 4 GiB Swap Memory File (/swapfile)│                                     │                              │   │
-│   │   └───────────────────────────────────────┘                                     │                              │   │
-│   └─────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────┘   │
-│                                                                                     │                                  │
-│                                                                                     │ HTTPS / TLS (Encrypted API Call) │
-│                                                                                     ▼                                  │
+│   │   │   │   • style.css (Dark/Light Minimalist)  │          │   • GET  /health (Readiness / S3 Status)   │   │   │   │
+│   │   │   │                                        │          │   • GET  /s3-files (S3 Console Inventory)  │   │   │   │
+│   │   │   └────────────────────────────────────────┘          └───────────────┬────────────────────┬───────┘   │   │   │
+│   │   │                                                                       │                    │           │   │   │
+│   │   │                                                                       ▼                    │           │   │   │
+│   │   │                                                       ┌────────────────────────────────┐   │           │   │   │
+│   │   │                                                       │   LANGCHAIN RAG ORCHESTRATOR   │   │           │   │   │
+│   │   │                                                       │   • PyPDFLoader & Splitter     │   │           │   │   │
+│   │   │                                                       │   • Sentence-Transformers      │   │           │   │   │
+│   │   │                                                       │   • FAISS Vector Engine        │   │           │   │   │
+│   │   │                                                       └───────────────┬────────────────┘   │           │   │   │
+│   │   └───────────────────────────────────────────────────────────────────────┼────────────────────┼───────────┘   │   │
+│   │                                                                           │                    │               │   │
+│   │   ┌───────────────────────────────────────────────────────────────────────┴────────┐           │               │   │
+│   │   │              TIER 1: AMAZON EBS BLOCK STORAGE (25 GiB gp3)                     │           │               │   │
+│   │   │   • Local Storage: /uploads/ (working document directory)                      │           │               │   │
+│   │   │   • Persistent Vector Store: /vector_db/ (index.faiss, index.pkl)              │           │               │   │
+│   │   │   • Virtual RAM Extension: /swapfile (4 GiB Swap Memory prevents OOM)          │           │               │   │
+│   │   └────────────────────────────────────────────────────────────────────────────────┘           │               │   │
+│   └────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┘   │
+│                                                                                                    │                   │
+│   ┌────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────┐   │
+│   │              TIER 2: AMAZON S3 CLOUD OBJECT STORAGE (s3://rag-chatbot-docs)                    │               │   │
+│   │   • Centralized Document Repository: documents/your-file.pdf                                   │               │   │
+│   │   • Multi-AZ 99.999999999% (11 9's) Data Durability                                           │               │   │
+│   │   • Visually Browse, Download & Inspect Files from AWS Console (Root/IAM Login)                │◄──────────────┘   │
+│   └────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────┘   │
+│                                                                                                    │                   │
+│                                                                                                    │ HTTPS / TLS       │
+│                                                                                                    ▼                   │
 │                                                       ┌────────────────────────────────────────────────────────────┐   │
 │                                                       │           CLOUD FOUNDATION MODEL INFERENCE                 │   │
 │                                                       │   • Groq LPU Cloud Inference Engine / Amazon Bedrock       │   │
@@ -73,27 +81,30 @@
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User Browser
+    actor User as User Browser / Client
     participant API as FastAPI (EC2)
+    participant S3 as Amazon S3 (Object Storage)
     participant Loader as PyPDF & Text Splitter
     participant Embed as SentenceTransformers
-    participant DB as FAISS Vector DB (EBS)
-    participant LLM as Groq / Amazon Bedrock
+    participant EBS as FAISS Vector DB (EBS gp3)
+    participant LLM as Cloud Foundation LLM
 
-    Note over User, DB: Phase 1: Document Ingestion Pipeline
+    Note over User, S3: Phase 1: Dual-Tier Document Ingestion Pipeline
     User->>API: POST /upload (Uploads PDF)
-    API->>API: Save raw PDF to /uploads
-    API->>Loader: Extract text & split into chunks (size=1000, overlap=200)
+    API->>API: 1. Save raw PDF to local EBS (/uploads/)
+    API->>S3: 2. Boto3 PutObject (Sync PDF to s3://bucket/documents/)
+    Note over S3: Visually viewable & downloadable in AWS Console!
+    API->>Loader: 3. Extract text & split into chunks (size=1000, overlap=200)
     Loader->>Embed: Convert text chunks into 384-dimensional dense vectors
-    Embed->>DB: Build vector index & persist to /vector_db/index.faiss
-    DB-->>API: Persist complete
-    API-->>User: 200 OK ("PDF uploaded and processed successfully")
+    Embed->>EBS: Build vector index & persist to /vector_db/index.faiss
+    EBS-->>API: Persist complete
+    API-->>User: 200 OK ("PDF uploaded & Synced to Amazon S3")
 
     Note over User, LLM: Phase 2: Retrieval-Augmented Generation Query
     User->>API: GET /ask?query="What is DCapsNet?"
     API->>Embed: Embed user query vector
-    API->>DB: k-NN Similarity Search (top k=3 chunks)
-    DB-->>API: Return retrieved context passages
+    API->>EBS: k-NN Similarity Search (top k=3 chunks)
+    EBS-->>API: Return retrieved context passages
     API->>LLM: Formulate grounded prompt (Context + Question + Guardrails)
     LLM-->>API: Return synthesized, cited answer
     API-->>User: 200 OK (JSON response with answer)
@@ -101,15 +112,29 @@ sequenceDiagram
 
 ---
 
+## 1.3 Dual-Tier Storage Architecture: Amazon EBS vs. Amazon S3
+
+A common viva/exam question is: *"Why use both EBS and S3 instead of just one?"*
+
+| Dimension | Tier 1: Amazon EBS (Block Storage) | Tier 2: Amazon S3 (Object Storage) |
+|---|---|---|
+| **Storage Type** | Virtual Hard Drive (Raw Block Device formatted as `ext4`). | Internet-scale Object Store accessible via HTTP/REST APIs. |
+| **Primary Project Function** | Hosts the Linux OS, Docker runtime, 4 GiB Swap virtual memory, and **low-latency FAISS vector index**. | Houses the **permanent PDF document archive**; visually inspectable via AWS Root Console. |
+| **Latency & Speed** | Sub-millisecond read/write speeds for fast k-NN vector search. | Millisecond-level latency for uploading and downloading whole files. |
+| **Console Visibility** | Shows the virtual disk entity (Volume ID, Size: 25 GiB, IOPS), but cannot browse individual files. | **Shows a visual web file explorer**: Click, inspect, preview, and download individual PDF documents! |
+| **Durability** | Single-AZ durability; attached directly to EC2 hypervisor. | Multi-AZ durability (**99.999999999% - 11 9's**); survives instance termination. |
+
+---
+
 # PART 2: DETAILED AWS SERVICES & TECHNICAL JUSTIFICATION
 
 | AWS Service | Role in This Project | Technical Rationale (Why this service?) | Alternative Considered | Why Alternative Was Rejected |
 |---|---|---|---|---|
+| **Amazon S3 (Simple Storage Service)** | **Centralized Cloud Document Repository** synced automatically on PDF upload. | • **Visual File Management**: Allows logging into AWS Root/IAM Console to see, browse, and download uploaded documents.<br>• **99.999999999% (11 9's)** durability.<br>• Decouples storage from EC2 instances so documents survive VM teardowns. | **Storing ONLY on EBS** | EBS files cannot be browsed directly in the AWS web console without connecting to the Linux command line. |
 | **Amazon EC2 (Elastic Compute Cloud)** | Host compute layer executing Dockerized FastAPI backend & ML pipeline. | • On-demand compute scaling.<br>• Full OS-level control to install Docker, Python 3.11, PyTorch, and FAISS.<br>• Free Tier eligible (`t2.micro` / `t3.micro`). | **AWS Elastic Beanstalk** | Adds unnecessary PaaS abstraction, limits custom Docker multi-stage optimization, and has slower deployment cycles. |
-| **Amazon EBS (Elastic Block Store - gp3)** | Persistent block storage (25 GiB) for OS, Docker images, PDF documents, and FAISS vector index. | • Sub-millisecond vector retrieval latency.<br>• Independent lifecycle (persists data even if EC2 instance is stopped).<br>• Supports live non-disruptive volume resizing. | **Local Instance Store** | Instance Store is ephemeral — all vector embeddings and uploaded PDFs are permanently lost when instance is stopped. |
+| **Amazon EBS (Elastic Block Store - gp3)** | Persistent block storage (25 GiB) for OS, Docker images, working files, and FAISS vector index. | • Sub-millisecond vector retrieval latency.<br>• Independent lifecycle (persists data even if EC2 instance is stopped).<br>• Supports live non-disruptive volume resizing. | **Local Instance Store** | Instance Store is ephemeral — all vector embeddings and uploaded PDFs are permanently lost when instance is stopped. |
 | **Linux Virtual Memory (4 GiB Swap on EBS)** | Extended virtual RAM to prevent Out-Of-Memory (OOM) crashes during embedding calculations. | • Deep learning models (`sentence-transformers`) spike memory to 1.2–1.5 GiB during tensor creation.<br>• Prevents kernel SIGKILL (exit code 137) on 1 GiB RAM instances. | **Upgrading to `t3.xlarge` (16 GB RAM)** | `t3.xlarge` costs over \$120/month; configuring swap on existing EBS achieves 100% stability at \$0.00 extra cost. |
 | **AWS VPC & Security Groups** | State-of-the-art virtual network firewall controlling inbound and outbound traffic. | • Enforces least-privilege port exposure.<br>• Port 22 restricted for administrative SSH.<br>• Port 8000 exposed for web UI & API traffic.<br>• Stateless outbound inspection. | **Disabling Firewall / Default Open** | Exposes administrative endpoints to automated bots, brute force SSH attacks, and unauthorized API exploitation. |
-| **Amazon S3 (Simple Storage Service)** | Persistent cloud object store for archive of raw input documents & static assets. | • 99.999999999% (11 9's) data durability.<br>• Built-in lifecycle policies (auto-tiering to Glacier for long-term audit).<br>• Infinitely scalable object storage. | **Amazon EFS (Elastic File System)** | EFS is more expensive per GB and designed for POSIX shared multi-instance file locking, not needed for PDF document storage. |
 | **Amazon Bedrock / Cloud LLM Endpoint** | Foundation Model inference provider for embeddings and text synthesis. | • Serverless API access to enterprise LLMs (`openai/gpt-oss-120b`, `Claude 3.5 Sonnet`, `Titan`).<br>• Zero GPU infrastructure overhead (no CUDA setup, driver maintenance, or idle charges). | **Self-hosted LLM on EC2 GPU (g4dn / g5)** | GPU instances cost \$0.52 to \$2.50/hour continuously even when no queries are being processed; exceeds student project budgets. |
 | **AWS CloudWatch** | Centralized application telemetry, container health, and error monitoring. | • Captures stdout/stderr container logs.<br>• Tracks CPU utilization, memory thresholds, and network I/O.<br>• Triggers alarms on elevated 5xx error rates. | **Self-hosted Prometheus & Grafana** | Requires dedicated VM resources and complex agent maintenance for a lightweight mini-project. |
 
@@ -219,3 +244,4 @@ sequenceDiagram
 ## 📱 QR CODE LINK (For Poster Corner)
 - **GitHub Repository:** [https://github.com/MdZeeshanAli01/rag-chatbot.git](https://github.com/MdZeeshanAli01/rag-chatbot.git)  
 *(Generate a QR code pointing to this URL and place it in the bottom-right corner of your poster for reviewers to inspect the live codebase!)*
+
