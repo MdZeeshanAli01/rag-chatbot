@@ -7,11 +7,13 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Install system dependencies (build-essential and curl for healthcheck)
+# Install system dependencies (curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install lightweight CPU-only PyTorch first (saves ~6 GB of disk space vs default CUDA PyTorch)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 # Copy dependency requirements
 COPY requirements.txt .
@@ -30,3 +32,4 @@ EXPOSE 8000
 
 # Run Uvicorn server
 CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
